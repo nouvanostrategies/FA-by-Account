@@ -2,9 +2,7 @@ name: Fetch Foreign Assistance Data Daily
 
 on:
   schedule:
-    # Runs automatically at 00:00 UTC every day
     - cron: '0 0 * * *'
-  # Allows manual triggers from the GitHub Actions tab
   workflow_dispatch:
 
 permissions:
@@ -19,14 +17,34 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Download Multi-Year API Data
+      - name: Download Multi-Year API Data safely
         run: |
-          # Download JSON datasets from 2022 through 2026
-          curl -s "https://foreignassistance.gov/api/v1/financials?fiscal_year=2026&page_size=250" -o data-2026.json
-          curl -s "https://foreignassistance.gov/api/v1/financials?fiscal_year=2025&page_size=250" -o data-2025.json
-          curl -s "https://foreignassistance.gov/api/v1/financials?fiscal_year=2024&page_size=250" -o data-2024.json
-          curl -s "https://foreignassistance.gov/api/v1/financials?fiscal_year=2023&page_size=250" -o data-2023.json
-          curl -s "https://foreignassistance.gov/api/v1/financials?fiscal_year=2022&page_size=250" -o data-2022.json
+          fetch_year () {
+            YEAR=$1
+            OUT_FILE="data-${YEAR}.json"
+            TEMP_FILE="temp-${YEAR}.json"
+            
+            # Fetch using --location and --fail
+            if curl -sL --fail "https://foreignassistance.gov/api/v1/financials?fiscal_year=${YEAR}&page_size=250" -o "$TEMP_FILE"; then
+              # Only overwrite if non-empty and valid JSON
+              if [ -s "$TEMP_FILE" ] && jq . "$TEMP_FILE" >/dev/null 2>&1; then
+                mv "$TEMP_FILE" "$OUT_FILE"
+                echo "Successfully updated $OUT_FILE"
+              else
+                echo "Warning: Received invalid/empty JSON for $YEAR. Skipping update."
+                rm -f "$TEMP_FILE"
+              fi
+            else
+              echo "Warning: Failed to download data for $YEAR. Keeping existing file."
+              rm -f "$TEMP_FILE"
+            fi
+          }
+
+          fetch_year 2026
+          fetch_year 2025
+          fetch_year 2024
+          fetch_year 2023
+          fetch_year 2022
 
       - name: Commit and Push Updated Data
         run: |
@@ -34,11 +52,10 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data-*.json
           
-          # Only commit if data files changed
           if git diff --staged --quiet; then
-            echo "No changes in API data."
+            echo "No data changes detected."
           else
-            git commit -m "chore: update multi-year json datasets (2022-2026) [skip ci]"
+            git commit -m "chore: update foreign assistance data JSON files [skip ci]"
             git push
           fi
 
