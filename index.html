@@ -7,10 +7,39 @@
   <!-- Chart.js for visualization -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
-    .controls { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
-    select, button { padding: 0.5rem; font-size: 1rem; }
-    canvas { max-width: 100%; height: 400px; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+      max-width: 900px; 
+      margin: 2rem auto; 
+      padding: 0 1rem; 
+      color: #333;
+    }
+    .controls { 
+      display: flex; 
+      gap: 1rem; 
+      margin-bottom: 1.5rem; 
+      align-items: center; 
+    }
+    button { 
+      padding: 0.6rem 1.2rem; 
+      font-size: 1rem; 
+      background-color: #0066cc; 
+      color: white; 
+      border: none; 
+      border-radius: 4px; 
+      cursor: pointer; 
+    }
+    button:hover { 
+      background-color: #0052a3; 
+    }
+    .status-msg {
+      font-size: 0.9rem;
+      color: #666;
+    }
+    canvas { 
+      max-width: 100%; 
+      height: 400px; 
+    }
   </style>
 </head>
 <body>
@@ -18,13 +47,8 @@
   <h1>Foreign Assistance Funding by Account</h1>
   
   <div class="controls">
-    <label for="fiscalYear">Fiscal Year:</label>
-    <select id="fiscalYear">
-      <option value="2024">2024</option>
-      <option value="2023">2023</option>
-      <option value="2022">2022</option>
-    </select>
-    <button onclick="fetchDataAndRender()">Generate Chart</button>
+    <button onclick="fetchDataAndRender()">Load Funding Data</button>
+    <span id="status" class="status-msg"></span>
   </div>
 
   <canvas id="fundingChart"></canvas>
@@ -33,32 +57,53 @@
     let chartInstance = null;
 
     async function fetchDataAndRender() {
-      const year = document.getElementById('fiscalYear').value;
-      const apiUrl = `https://foreignassistance.gov/api/v1/financials?fiscal_year=${year}&page_size=250`;
+      const statusEl = document.getElementById('status');
+      statusEl.textContent = 'Loading local dataset...';
 
       try {
-        const response = await fetch(apiUrl);
-        if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-        const result = await response.json();
+        // Fetch from the local data.json created by GitHub Actions
+        const response = await fetch('./data.json');
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
 
-        // Process API data: Group obligations/disbursements by Funding Account Name
+        const result = await response.json();
+        console.log("Loaded local data successfully:", result);
+
+        // Adjust for API wrappers (handles array vs object response structures)
+        const dataList = Array.isArray(result) ? result : (result.data || []);
+
+        if (dataList.length === 0) {
+          statusEl.textContent = 'No records found in data.json.';
+          return;
+        }
+
+        // Group amounts by Funding Account Name
         const accountTotals = {};
-        const dataList = result.data || result; // Adjust based on API payload wrapper
 
         dataList.forEach(item => {
           const account = item.funding_account_name || 'Unknown Account';
-          const amount = parseFloat(item.transaction_amount || item.obligation_amount || 0);
+          const amount = parseFloat(item.transaction_amount || item.obligation_amount || item.current_amount || 0);
           
           accountTotals[account] = (accountTotals[account] || 0) + amount;
         });
 
-        const labels = Object.keys(accountTotals).slice(0, 10); // Top 10 accounts
-        const values = labels.map(label => accountTotals[label]);
+        // Extract top 10 accounts by total amount
+        const sortedAccounts = Object.entries(accountTotals)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10);
+
+        const labels = sortedAccounts.map(entry => entry[0]);
+        const values = sortedAccounts.map(entry => entry[1]);
 
         renderChart(labels, values);
+        statusEl.textContent = `Successfully rendered ${dataList.length} records!`;
+
       } catch (err) {
-        alert('Failed to fetch data from API: ' + err.message);
-        console.error(err);
+        statusEl.textContent = 'Failed to load local data.';
+        console.error("Failed to load local data.json:", err);
+        alert('Could not load data.json. Make sure the GitHub Action workflow has run successfully at least once.');
       }
     }
 
@@ -71,7 +116,7 @@
         data: {
           labels: labels,
           datasets: [{
-            label: 'Total Amount (USD)',
+            label: 'Total Funding Amount (USD)',
             data: values,
             backgroundColor: 'rgba(54, 162, 235, 0.6)',
             borderColor: 'rgba(54, 162, 235, 1)',
@@ -80,14 +125,29 @@
         },
         options: {
           responsive: true,
-          plugins: { title: { display: true, text: 'Top Funding Accounts' } },
-          scales: { y: { beginAtZero: true } }
+          plugins: { 
+            title: { 
+              display: true, 
+              text: 'Top 10 Foreign Assistance Funding Accounts (2024)' 
+            } 
+          },
+          scales: { 
+            y: { 
+              beginAtZero: true,
+              ticks: {
+                // Format numbers as currency in millions/billions
+                callback: function(value) {
+                  return '$' + value.toLocaleString();
+                }
+              }
+            } 
+          }
         }
       });
     }
 
-    // Initial load
-    fetchDataAndRender();
+    // Automatically load data when page finishes loading
+    window.addEventListener('DOMContentLoaded', fetchDataAndRender);
   </script>
 </body>
 </html>
