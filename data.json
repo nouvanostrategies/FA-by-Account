@@ -1,0 +1,52 @@
+[
+  {
+    "fiscal_year": "2024",
+    "funding_account_name": "Development Assistance",
+    "transaction_amount": 2500000000
+  },
+  {
+    "fiscal_year": "2024",
+    "funding_account_name": "Economic Support Fund",
+    "transaction_amount": 1800000000
+  },
+  {
+    "fiscal_year": "2024",
+    "funding_account_name": "Global Health Programs",
+    "transaction_amount": 1400000000
+  },
+  {
+    "fiscal_year": "2024",
+    "funding_account_name": "International Disaster Assistance",
+    "transaction_amount": 950000000
+  },
+  {
+    "fiscal_year": "2024",
+    "funding_account_name": "Foreign Military Financing",
+    "transaction_amount": 800000000
+  },
+  {
+    "fiscal_year": "2024",
+    "funding_account_name": "Migration and Refugee Assistance",
+    "transaction_amount": 650000000
+  },
+  {
+    "fiscal_year": "2024",
+    "funding_account_name": "Peacekeeping Operations",
+    "transaction_amount": 420000000
+  },
+  {
+    "fiscal_year": "2024",
+    "funding_account_name": "Nonproliferation, Anti-Terrorism",
+    "transaction_amount": 310000000
+  },
+  {
+    "fiscal_year": "2024",
+    "funding_account_name": "International Narcotics Control",
+    "transaction_amount": 220000000
+  },
+  {
+    "fiscal_year": "2024",
+    "funding_account_name": "Democracy Fund",
+    "transaction_amount": 150000000
+  }
+]
