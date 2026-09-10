@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Foreign Assistance Funding Tracker</title>
+  <!-- Chart.js for visualization -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+    .controls { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
+    select, button { padding: 0.5rem; font-size: 1rem; }
+    canvas { max-width: 100%; height: 400px; }
+  </style>
+</head>
+<body>
+
+  <h1>Foreign Assistance Funding by Account</h1>
+  
+  <div class="controls">
+    <label for="fiscalYear">Fiscal Year:</label>
+    <select id="fiscalYear">
+      <option value="2024">2024</option>
+      <option value="2023">2023</option>
+      <option value="2022">2022</option>
+    </select>
+    <button onclick="fetchDataAndRender()">Generate Chart</button>
+  </div>
+
+  <canvas id="fundingChart"></canvas>
+
+  <script>
+    let chartInstance = null;
+
+    async function fetchDataAndRender() {
+      const year = document.getElementById('fiscalYear').value;
+      const apiUrl = `https://foreignassistance.gov/api/v1/financials?fiscal_year=${year}&page_size=250`;
+
+      try {
+        const response = await fetch(apiUrl);
+        if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+        const result = await response.json();
+
+        // Process API data: Group obligations/disbursements by Funding Account Name
+        const accountTotals = {};
+        const dataList = result.data || result; // Adjust based on API payload wrapper
+
+        dataList.forEach(item => {
+          const account = item.funding_account_name || 'Unknown Account';
+          const amount = parseFloat(item.transaction_amount || item.obligation_amount || 0);
+          
+          accountTotals[account] = (accountTotals[account] || 0) + amount;
+        });
+
+        const labels = Object.keys(accountTotals).slice(0, 10); // Top 10 accounts
+        const values = labels.map(label => accountTotals[label]);
+
+        renderChart(labels, values);
+      } catch (err) {
+        alert('Failed to fetch data from API: ' + err.message);
+        console.error(err);
+      }
+    }
+
+    function renderChart(labels, values) {
+      const ctx = document.getElementById('fundingChart').getContext('2d');
+      if (chartInstance) chartInstance.destroy();
+
+      chartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Total Amount (USD)',
+            data: values,
+            backgroundColor: 'rgba(54, 162, 235, 0.6)',
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { title: { display: true, text: 'Top Funding Accounts' } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+
+    // Initial load
+    fetchDataAndRender();
+  </script>
+</body>
+</html>
