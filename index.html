@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Foreign Assistance Funding Tracker</title>
-  <!-- Chart.js for data visualization -->
+  <!-- Chart.js for visualization -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { 
@@ -36,7 +36,7 @@
     }
     .status-msg {
       font-size: 0.9rem;
-      color: #666;
+      font-weight: 500;
     }
     .chart-container {
       position: relative;
@@ -45,6 +45,16 @@
     }
     canvas { 
       max-width: 100%; 
+    }
+    #debugOutput {
+      margin-top: 1.5rem;
+    }
+    pre {
+      background: #f0f0f0;
+      padding: 1rem;
+      border-radius: 4px;
+      overflow-x: auto;
+      font-size: 0.85rem;
     }
   </style>
 </head>
@@ -72,67 +82,111 @@
     <canvas id="fundingChart"></canvas>
   </div>
 
+  <div id="debugOutput"></div>
+
   <script>
     let chartInstance = null;
 
     async function fetchDataAndRender() {
       const selectedYear = document.getElementById('yearSelect').value;
       const statusEl = document.getElementById('status');
+      const debugEl = document.getElementById('debugOutput');
       
-      statusEl.textContent = `Loading data for ${selectedYear}...`;
+      statusEl.style.color = '#666';
+      statusEl.textContent = `Loading data for FY ${selectedYear}...`;
+      if (debugEl) debugEl.innerHTML = '';
 
       try {
-        // Fetch the corresponding year's JSON file
-        const response = await fetch(`./data-${selectedYear}.json`);
+        // Fetch the selected year's JSON file (with fallback to data.json for 2024)
+        let response = await fetch(`./data-${selectedYear}.json`);
         
-        if (!response.ok) {
-          // Fallback if data-[YEAR].json doesn't exist yet
-          if (selectedYear === '2024') {
-            const fallbackResponse = await fetch('./data.json');
-            if (fallbackResponse.ok) {
-              const fallbackData = await fallbackResponse.json();
-              processAndRender(fallbackData, selectedYear, statusEl);
-              return;
-            }
-          }
-          throw new Error(`File ./data-${selectedYear}.json not found on server.`);
+        if (!response.ok && selectedYear === '2024') {
+          response = await fetch('./data.json');
         }
 
-        const result = await response.json();
-        processAndRender(result, selectedYear, statusEl);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ./data-${selectedYear}.json file not found on server.`);
+        }
+
+        // Read as plain text first to safely prevent SyntaxError JSON crashes on 0-byte/empty files
+        const text = await response.text();
+        if (!text || text.trim().length === 0) {
+          throw new Error(`data-${selectedYear}.json is empty. Run the GitHub Action workflow to populate it.`);
+        }
+
+        // Safely parse JSON after verifying the string is non-empty
+        const rawData = JSON.parse(text);
+        console.log("Loaded raw data successfully:", rawData);
+
+        // Check if file contains API Error payload
+        if (rawData.API_Error_Log || rawData.error || rawData.message) {
+          statusEl.style.color = '#d9534f';
+          statusEl.textContent = `API error payload saved inside data-${selectedYear}.json.`;
+          if (debugEl) {
+            debugEl.innerHTML = `<p><strong>File Contents:</strong></p><pre>${JSON.stringify(rawData, null, 2)}</pre>`;
+          }
+          if (chartInstance) chartInstance.destroy();
+          return;
+        }
+
+        // Standardize list extraction across various API output wrappers
+        let dataList = [];
+        if (Array.isArray(rawData)) {
+          dataList = rawData;
+        } else if (rawData.data && Array.isArray(rawData.data)) {
+          dataList = rawData.data;
+        } else if (rawData.results && Array.isArray(rawData.results)) {
+          dataList = rawData.results;
+        } else if (rawData.financials && Array.isArray(rawData.financials)) {
+          dataList = rawData.financials;
+        }
+
+        if (dataList.length === 0) {
+          statusEl.style.color = '#d9534f';
+          statusEl.textContent = `No valid record array found inside data-${selectedYear}.json.`;
+          if (debugEl) {
+            debugEl.innerHTML = `<p><strong>Received JSON structure:</strong></p><pre>${JSON.stringify(rawData, null, 2)}</pre>`;
+          }
+          if (chartInstance) chartInstance.destroy();
+          return;
+        }
+
+        // Aggregate amounts by account name flexible key matching
+        const accountTotals = {};
+        dataList.forEach(item => {
+          const account = item.funding_account_name || item.account_name || item.funding_agency_name || item.operating_unit || 'Other Accounts';
+          const amount = parseFloat(item.transaction_amount || item.obligation_amount || item.current_amount || item.amount || 0);
+          
+          if (amount > 0) {
+            accountTotals[account] = (accountTotals[account] || 0) + amount;
+          }
+        });
+
+        // Extract top 10 accounts by value
+        const sortedAccounts = Object.entries(accountTotals)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10);
+
+        if (sortedAccounts.length === 0) {
+          statusEl.style.color = '#d9534f';
+          statusEl.textContent = `Records loaded, but no positive dollar amounts found for FY ${selectedYear}.`;
+          if (chartInstance) chartInstance.destroy();
+          return;
+        }
+
+        const labels = sortedAccounts.map(entry => entry[0]);
+        const values = sortedAccounts.map(entry => entry[1]);
+
+        renderChart(labels, values, selectedYear);
+        statusEl.style.color = '#2e7d32';
+        statusEl.textContent = `Successfully rendered FY ${selectedYear} (${dataList.length} total records loaded).`;
 
       } catch (err) {
-        statusEl.textContent = `Could not load FY ${selectedYear} data. Make sure GitHub Actions ran.`;
-        console.error(err);
+        statusEl.style.color = '#d9534f';
+        statusEl.textContent = `Error: ${err.message}`;
+        console.error("Fetch/Render error:", err);
+        if (chartInstance) chartInstance.destroy();
       }
-    }
-
-    function processAndRender(result, year, statusEl) {
-      const dataList = Array.isArray(result) ? result : (result.data || []);
-
-      if (dataList.length === 0) {
-        statusEl.textContent = `No records found for ${year}.`;
-        return;
-      }
-
-      // Aggregate totals by funding account name
-      const accountTotals = {};
-      dataList.forEach(item => {
-        const account = item.funding_account_name || item.account_name || 'Unknown Account';
-        const amount = parseFloat(item.transaction_amount || item.obligation_amount || item.current_amount || 0);
-        accountTotals[account] = (accountTotals[account] || 0) + amount;
-      });
-
-      // Get top 10 accounts
-      const sortedAccounts = Object.entries(accountTotals)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
-
-      const labels = sortedAccounts.map(entry => entry[0]);
-      const values = sortedAccounts.map(entry => entry[1]);
-
-      renderChart(labels, values, year);
-      statusEl.textContent = `Loaded ${dataList.length} records for FY ${year}.`;
     }
 
     function renderChart(labels, values, year) {
