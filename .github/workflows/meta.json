@@ -1,0 +1,3 @@
+- name: Save build timestamp
+  run: |
+    echo "{\"lastUpdated\":\"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"}" > ./meta.json
