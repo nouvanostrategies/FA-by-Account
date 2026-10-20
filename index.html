@@ -87,6 +87,18 @@
   <script>
     let chartInstance = null;
 
+    // Explicit Account Code to Label Mapping (Includes State Dept 019-1122)
+    const ACCOUNT_LABEL_MAP = {
+      "1122": "019-1122: National Security Investment Programs",
+      "019-1122": "019-1122: National Security Investment Programs",
+      "0100": "019-0100: Diplomatic Programs",
+      "019-0100": "019-0100: Diplomatic Programs",
+      "0201": "019-0201: Educational & Cultural Exchange",
+      "019-0201": "019-0201: Educational & Cultural Exchange",
+      "1004": "019-1004: Foreign Military Financing",
+      "019-1004": "019-1004: Foreign Military Financing"
+    };
+
     async function fetchDataAndRender() {
       const selectedYear = document.getElementById('yearSelect').value;
       const statusEl = document.getElementById('status');
@@ -151,10 +163,20 @@
           return;
         }
 
-        // Aggregate amounts by account name flexible key matching
+        // Aggregate amounts by account code/name with flexible key matching
         const accountTotals = {};
         dataList.forEach(item => {
-          const account = item.funding_account_name || item.account_name || item.funding_agency_name || item.operating_unit || 'Other Accounts';
+          const rawAccountKey = item.funding_account_code || 
+                                item.main_account_code || 
+                                item.tas || 
+                                item.funding_account_name || 
+                                item.account_name || 
+                                item.funding_agency_name || 
+                                item.operating_unit || 
+                                'Other Accounts';
+
+          // Map known account codes (like 1122 or 019-1122) to full titles
+          const account = ACCOUNT_LABEL_MAP[rawAccountKey] || rawAccountKey;
           const amount = parseFloat(item.transaction_amount || item.obligation_amount || item.current_amount || item.amount || 0);
           
           if (amount > 0) {
