@@ -8,15 +8,5 @@
     "funding_account_code": "0100",
     "funding_account_name": "Diplomatic Programs",
     "transaction_amount": 4200000000
-  },
-  {
-    "funding_account_code": "0201",
-    "funding_account_name": "Educational and Cultural Exchange",
-    "transaction_amount": 775000000
-  },
-  {
-    "funding_account_code": "1004",
-    "funding_account_name": "Foreign Military Financing",
-    "transaction_amount": 6000000000
   }
 ]
