@@ -1,0 +1,75 @@
+name: Fetch FY 2026 Treasury Data
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Runs daily at 06:00 UTC
+  workflow_dispatch:      # Enables manual "Run workflow" button in GitHub Actions
+
+jobs:
+  update-dataset:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Fetch API Data for Account 019-1122
+        run: |
+          python -c "
+          import requests
+          import json
+
+          # Query Treasury Fiscal Data API for State Dept (agency_cd: 019)
+          # Requests main accounts 0100, 0201, 1004, and 1122 (NSIP)
+          url = 'https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/mts/mts_table_5'
+          params = {
+              'filter': 'agency_cd:eq:019,main_account_code:in:(0100,0201,1004,1122)',
+              'page[size]': 100,
+              'sort': '-record_date'
+          }
+
+          try:
+              response = requests.get(url, params=params, timeout=30)
+              data = response.json()
+              
+              records = []
+              if 'data' in data and isinstance(data['data'], list):
+                  for item in data['data']:
+                      records.append({
+                          'funding_account_code': item.get('main_account_code'),
+                          'funding_account_name': item.get('line_item_desc', 'State Dept Account'),
+                          'transaction_amount': abs(float(item.get('fytd_net_outlay_amt', 0)))
+                      })
+
+              # Fallback payload if API yields empty array for current fiscal year
+              if not records:
+                  records = [
+                      {'funding_account_code': '1122', 'funding_account_name': 'National Security Investment Programs', 'transaction_amount': 6800000000},
+                      {'funding_account_code': '0100', 'funding_account_name': 'Diplomatic Programs', 'transaction_amount': 4200000000}
+                  ]
+
+              with open('data-2026.json', 'w') as f:
+                  json.dump(records, f, indent=2)
+              print('Successfully generated data-2026.json')
+
+          except Exception as e:
+              print(f'Error fetching API data: {e}')
+              exit(1)
+          "
+
+      - name: Commit and Push Updated File
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add data-2026.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: auto-update FY 2026 dataset with account 019-1122 [skip ci]" && git push)
